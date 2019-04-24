@@ -1,19 +1,19 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: local-path-storage
+  name: local-lvm-storage
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: local-path-provisioner-service-account
-  namespace: local-path-storage
+  name: local-lvm-provisioner-service-account
+  namespace: local-lvm-storage
 ---
 apiVersion: rbac.authorization.k8s.io/v1beta1
 kind: ClusterRole
 metadata:
-  name: local-path-provisioner-role
-  namespace: local-path-storage
+  name: local-lvm-provisioner-role
+  namespace: local-lvm-storage
 rules:
 - apiGroups: [""]
   resources: ["nodes", "persistentvolumeclaims"]
@@ -31,39 +31,39 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1beta1
 kind: ClusterRoleBinding
 metadata:
-  name: local-path-provisioner-bind
-  namespace: local-path-storage
+  name: local-lvm-provisioner-bind
+  namespace: local-lvm-storage
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: local-path-provisioner-role
+  name: local-lvm-provisioner-role
 subjects:
 - kind: ServiceAccount
-  name: local-path-provisioner-service-account
-  namespace: local-path-storage
+  name: local-lvm-provisioner-service-account
+  namespace: local-lvm-storage
 ---
 apiVersion: apps/v1beta2
 kind: Deployment
 metadata:
-  name: local-path-provisioner
-  namespace: local-path-storage
+  name: local-lvm-provisioner
+  namespace: local-lvm-storage
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: local-path-provisioner
+      app: local-lvm-provisioner
   template:
     metadata:
       labels:
-        app: local-path-provisioner
+        app: local-lvm-provisioner
     spec:
-      serviceAccountName: local-path-provisioner-service-account
+      serviceAccountName: local-lvm-provisioner-service-account
       containers:
-      - name: local-path-provisioner
-        image: rancher/local-path-provisioner:v0.0.7
+      - name: local-lvm-provisioner
+        image: jpwi/local-lvm-provisioner:v0.10.0
         imagePullPolicy: Always
         command:
-        - local-path-provisioner
+        - local-lvm-provisioner
         - --debug
         - start
         - --config
@@ -79,28 +79,28 @@ spec:
       volumes:
         - name: config-volume
           configMap:
-            name: local-path-config
+            name: local-lvm-config
 ---
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: local-path
-provisioner: rancher.io/local-path
+  name: local-lvm
+provisioner: mein.io/local-lvm
 volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Delete
 ---
 kind: ConfigMap
 apiVersion: v1
 metadata:
-  name: local-path-config
-  namespace: local-path-storage
+  name: local-lvm-config
+  namespace: local-lvm-storage
 data:
   config.json: |-
         {
                 "nodePathMap":[
                 {
-                        "node":"DEFAULT_PATH_FOR_NON_LISTED_NODES",
-                        "paths":["/opt/local-path-provisioner"]
+                        "node":"DEFAULT_VGS_FOR_NON_LISTED_NODES",
+                        "vgs":["vg1"]
                 }
                 ]
         }

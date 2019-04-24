@@ -16,4 +16,4 @@ spec:
   volumes:
   - name: volv
     persistentVolumeClaim:
-      claimName: local-path-pvc
+      claimName: local-lvm-pvc

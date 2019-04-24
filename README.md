@@ -22,22 +22,22 @@ Kubernetes v1.12+.
 
 ### Installation
 
-In this setup, the directory `/opt/local-path-provisioner` will be used across all the nodes as the path for provisioning (a.k.a, store the persistent volume data). The provisioner will be installed in `local-path-storage` namespace by default.
+In this setup, the directory `/opt/local-lvm-provisioner` will be used across all the nodes as the path for provisioning (a.k.a, store the persistent volume data). The provisioner will be installed in `local-lvm-storage` namespace by default.
 
 ```
-kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
+kubectl apply -f https://raw.githubusercontent.com/rancher/local-lvm-provisioner/master/deploy/local-lvm-storage.yaml
 ```
 
 After installation, you should see something like the following:
 ```
-$ kubectl -n local-path-storage get pod
+$ kubectl -n local-lvm-storage get pod
 NAME                                     READY     STATUS    RESTARTS   AGE
-local-path-provisioner-d744ccf98-xfcbk   1/1       Running   0          7m
+local-lvm-provisioner-d744ccf98-xfcbk   1/1       Running   0          7m
 ```
 
 Check and follow the provisioner log using:
 ```
-$ kubectl -n local-path-storage logs -f local-path-provisioner-d744ccf98-xfcbk
+$ kubectl -n local-lvm-storage logs -f local-lvm-provisioner-d744ccf98-xfcbk
 ```
 
 ## Usage
@@ -45,22 +45,22 @@ $ kubectl -n local-path-storage logs -f local-path-provisioner-d744ccf98-xfcbk
 Create a `hostPath` backed Persistent Volume and a pod uses it:
 
 ```
-kubectl create -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/examples/pvc.yaml
-kubectl create -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/examples/pod.yaml
+kubectl create -f https://raw.githubusercontent.com/rancher/local-lvm-provisioner/master/examples/pvc.yaml
+kubectl create -f https://raw.githubusercontent.com/rancher/local-lvm-provisioner/master/examples/pod.yaml
 ```
 
 You should see the PV has been created:
 ```
 $ kubectl get pv
 NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS    CLAIM                    STORAGECLASS   REASON    AGE
-pvc-bc3117d9-c6d3-11e8-b36d-7a42907dda78   2Gi        RWO            Delete           Bound     default/local-path-pvc   local-path               4s
+pvc-bc3117d9-c6d3-11e8-b36d-7a42907dda78   2Gi        RWO            Delete           Bound     default/local-lvm-pvc   local-lvm               4s
 ```
 
 The PVC has been bound:
 ```
 $ kubectl get pvc
 NAME             STATUS    VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
-local-path-pvc   Bound     pvc-bc3117d9-c6d3-11e8-b36d-7a42907dda78   2Gi        RWO            local-path     16s
+local-lvm-pvc   Bound     pvc-bc3117d9-c6d3-11e8-b36d-7a42907dda78   2Gi        RWO            local-lvm     16s
 ```
 
 And the Pod started running:
@@ -72,32 +72,32 @@ volume-test   1/1       Running   0          3s
 
 Write something into the pod
 ```
-kubectl exec volume-test -- sh -c "echo local-path-test > /data/test"
+kubectl exec volume-test -- sh -c "echo local-lvm-test > /data/test"
 ```
 
 Now delete the pod using
 ```
-kubectl delete -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/examples/pod.yaml
+kubectl delete -f https://raw.githubusercontent.com/rancher/local-lvm-provisioner/master/examples/pod.yaml
 ```
 
 After confirm that the pod is gone, recreated the pod using
 ```
-kubectl create -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/examples/pod.yaml
+kubectl create -f https://raw.githubusercontent.com/rancher/local-lvm-provisioner/master/examples/pod.yaml
 ```
 
 Check the volume content:
 ```
 $ kubectl exec volume-test cat /data/test
-local-path-test
+local-lvm-test
 ```
 
 Delete the pod and pvc
 ```
-kubectl delete -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/examples/pod.yaml
-kubectl delete -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/examples/pvc.yaml
+kubectl delete -f https://raw.githubusercontent.com/rancher/local-lvm-provisioner/master/examples/pod.yaml
+kubectl delete -f https://raw.githubusercontent.com/rancher/local-lvm-provisioner/master/examples/pvc.yaml
 ```
 
-The volume content stored on the node will be automatically cleaned up. You can check the log of `local-path-provisioner-xxx` for details.
+The volume content stored on the node will be automatically cleaned up. You can check the log of `local-lvm-provisioner-xxx` for details.
 
 Now you've verified that the provisioner works as expected.
 
@@ -108,19 +108,19 @@ The configuration of the provisioner is a json file `config.json`, stored in the
 kind: ConfigMap
 apiVersion: v1
 metadata:
-  name: local-path-config
-  namespace: local-path-storage
+  name: local-lvm-config
+  namespace: local-lvm-storage
 data:
   config.json: |-
         {
                 "nodePathMap":[
                 {
                         "node":"DEFAULT_PATH_FOR_NON_LISTED_NODES",
-                        "paths":["/opt/local-path-provisioner"]
+                        "paths":["/opt/local-lvm-provisioner"]
                 },
                 {
                         "node":"yasker-lp-dev1",
-                        "paths":["/opt/local-path-provisioner", "/data1"]
+                        "paths":["/opt/local-lvm-provisioner", "/data1"]
                 },
                 {
                         "node":"yasker-lp-dev3",
@@ -148,10 +148,10 @@ The configuration must obey following rules:
 
 ### Reloading
 
-The provisioner supports automatic reloading of configuration. Users can change the configuration using `kubectl apply` or `kubectl edit` with config map `local-path-config`. It will be a delay between user update the config map and the provisioner pick it up.
+The provisioner supports automatic reloading of configuration. Users can change the configuration using `kubectl apply` or `kubectl edit` with config map `local-lvm-config`. It will be a delay between user update the config map and the provisioner pick it up.
 
 When the provisioner detected the configuration changes, it will try to load the new configuration. Users can observe it in the log
->time="2018-10-03T05:56:13Z" level=debug msg="Applied config: {\"nodePathMap\":[{\"node\":\"DEFAULT_PATH_FOR_NON_LISTED_NODES\",\"paths\":[\"/opt/local-path-provisioner\"]},{\"node\":\"yasker-lp-dev1\",\"paths\":[\"/opt\",\"/data1\"]},{\"node\":\"yasker-lp-dev3\"}]}"
+>time="2018-10-03T05:56:13Z" level=debug msg="Applied config: {\"nodePathMap\":[{\"node\":\"DEFAULT_PATH_FOR_NON_LISTED_NODES\",\"paths\":[\"/opt/local-lvm-provisioner\"]},{\"node\":\"yasker-lp-dev1\",\"paths\":[\"/opt\",\"/data1\"]},{\"node\":\"yasker-lp-dev3\"}]}"
 
 If the reload failed due to some reason, the provisioner will report error in the log, and **continue using the last valid configuration for provisioning in the meantime**.
 >time="2018-10-03T05:19:25Z" level=error msg="failed to load the new config file: fail to load config file /etc/config/config.json: invalid character '#' looking for beginning of object key string"
@@ -164,12 +164,12 @@ If the reload failed due to some reason, the provisioner will report error in th
 
 ## Uninstall
 
-Before uninstallation, make sure the PVs created by the provisioner has already been deleted. Use `kubectl get pv` and make sure no PV with StorageClass `local-path`.
+Before uninstallation, make sure the PVs created by the provisioner has already been deleted. Use `kubectl get pv` and make sure no PV with StorageClass `local-lvm`.
 
 To uninstall, execute:
 
 ```
-kubectl delete -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
+kubectl delete -f https://raw.githubusercontent.com/rancher/local-lvm-provisioner/master/deploy/local-lvm-storage.yaml
 ```
 
 ## License

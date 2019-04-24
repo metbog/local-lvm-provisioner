@@ -1,25 +1,25 @@
 apiVersion: apps/v1beta2
 kind: Deployment
 metadata:
-  name: local-path-provisioner
-  namespace: local-path-storage
+  name: local-lvm-provisioner
+  namespace: local-lvm-storage
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: local-path-provisioner
+      app: local-lvm-provisioner
   template:
     metadata:
       labels:
-        app: local-path-provisioner
+        app: local-lvm-provisioner
     spec:
-      serviceAccountName: local-path-provisioner-service-account
+      serviceAccountName: local-lvm-provisioner-service-account
       containers:
-      - name: local-path-provisioner
-        image: rancher/local-path-provisioner:v0.0.7
+      - name: local-lvm-provisioner
+        image: rancher/local-lvm-provisioner:v0.10.0
         imagePullPolicy: Always
         command:
-        - local-path-provisioner
+        - local-lvm-provisioner
         - --debug
         - start
         - --config
@@ -35,4 +35,4 @@ spec:
       volumes:
         - name: config-volume
           configMap:
-            name: local-path-config
+            name: local-lvm-config

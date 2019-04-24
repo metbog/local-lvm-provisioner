@@ -1,9 +1,9 @@
 apiVersion: v1
 kind: Pod
 metadata:
-  name: local-path-test
+  name: local-lvm-test
   labels:
-    app.kubernetes.io/name: local-path-test
+    app.kubernetes.io/name: local-lvm-test
 spec:
   containers:
     - name: test
@@ -26,24 +26,24 @@ spec:
   volumes:
     - name: test
       persistentVolumeClaim:
-        claimName: local-path-pvc
+        claimName: local-lvm-pvc
     - name: config
       configMap:
-        name: local-path-test
+        name: local-lvm-test
         defaultMode: 0555
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: local-path-test
+  name: local-lvm-test
   labels:
-    app.kubernetes.io/name: local-path-test
+    app.kubernetes.io/name: local-lvm-test
 data:
   test.sh: |
     #!/bin/sh
     id
     ls -al /test && \
-    echo 'Hello from local-path-test' && \
+    echo 'Hello from local-lvm-test' && \
     cp /config/text.txt /test/test.txt && \
     touch /test/foo && \
     ls -al /test

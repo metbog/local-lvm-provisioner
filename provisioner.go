@@ -330,7 +330,7 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []
 			},
 			Containers: []v1.Container{
 				{
-					Name:    "local-path-" + string(action),
+					Name:    "local-lvm-" + string(action),
 					Image:   p.helperImage,
 					Command: append(cmdsForPath, filepath.Join("/data/", volumeDir)),
 					VolumeMounts: []v1.VolumeMount{
