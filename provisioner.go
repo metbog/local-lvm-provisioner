@@ -29,7 +29,7 @@ const (
 const (
 	KeyNode = "kubernetes.io/hostname"
 
-	NodeDefaultNonListedNodes = "DEFAULT_PATH_FOR_NON_LISTED_NODES"
+	NodeDefaultNonListedNodes = "DEFAULT_VGS_FOR_NON_LISTED_NODES"
 )
 
 var (

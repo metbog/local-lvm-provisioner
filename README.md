@@ -115,16 +115,16 @@ data:
         {
                 "nodePathMap":[
                 {
-                        "node":"DEFAULT_PATH_FOR_NON_LISTED_NODES",
-                        "paths":["/opt/local-lvm-provisioner"]
+                        "node":"DEFAULT_VGS_FOR_NON_LISTED_NODES",
+                        "vgs":["vg1"]
                 },
                 {
                         "node":"yasker-lp-dev1",
-                        "paths":["/opt/local-lvm-provisioner", "/data1"]
+                        "vgs":["vg0", "vg1"]
                 },
                 {
                         "node":"yasker-lp-dev3",
-                        "paths":[]
+                        "vgs":[]
                 }
                 ]
         }
@@ -133,7 +133,7 @@ data:
 
 ### Definition
 `nodePathMap` is the place user can customize where to store the data on each node.
-1. If one node is not listed on the `nodePathMap`, and Kubernetes wants to create volume on it, the paths specified in `DEFAULT_PATH_FOR_NON_LISTED_NODES` will be used for provisioning.
+1. If one node is not listed on the `nodePathMap`, and Kubernetes wants to create volume on it, the paths specified in `DEFAULT_VGS_FOR_NON_LISTED_NODES` will be used for provisioning.
 2. If one node is listed on the `nodePathMap`, the specified paths in `paths` will be used for provisioning.
     1. If one node is listed but with `paths` set to `[]`, the provisioner will refuse to provision on this node.
     2. If more than one path was specified, the path would be chosen randomly when provisioning.
@@ -151,7 +151,7 @@ The configuration must obey following rules:
 The provisioner supports automatic reloading of configuration. Users can change the configuration using `kubectl apply` or `kubectl edit` with config map `local-lvm-config`. It will be a delay between user update the config map and the provisioner pick it up.
 
 When the provisioner detected the configuration changes, it will try to load the new configuration. Users can observe it in the log
->time="2018-10-03T05:56:13Z" level=debug msg="Applied config: {\"nodePathMap\":[{\"node\":\"DEFAULT_PATH_FOR_NON_LISTED_NODES\",\"paths\":[\"/opt/local-lvm-provisioner\"]},{\"node\":\"yasker-lp-dev1\",\"paths\":[\"/opt\",\"/data1\"]},{\"node\":\"yasker-lp-dev3\"}]}"
+>time="2018-10-03T05:56:13Z" level=debug msg="Applied config: {\"nodePathMap\":[{\"node\":\"DEFAULT_VGS_FOR_NON_LISTED_NODES\",\"paths\":[\"/opt/local-lvm-provisioner\"]},{\"node\":\"yasker-lp-dev1\",\"paths\":[\"/opt\",\"/data1\"]},{\"node\":\"yasker-lp-dev3\"}]}"
 
 If the reload failed due to some reason, the provisioner will report error in the log, and **continue using the last valid configuration for provisioning in the meantime**.
 >time="2018-10-03T05:19:25Z" level=error msg="failed to load the new config file: fail to load config file /etc/config/config.json: invalid character '#' looking for beginning of object key string"

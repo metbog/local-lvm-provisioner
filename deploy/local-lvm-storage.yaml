@@ -97,7 +97,7 @@ metadata:
 data:
   config.json: |-
         {
-                "nodePathMap":[
+                "nodeVGMap":[
                 {
                         "node":"DEFAULT_VGS_FOR_NON_LISTED_NODES",
                         "vgs":["vg1"]
