@@ -2,8 +2,23 @@
 set -e -x
 
 cd $(dirname $0)/..
-VERSION=${VERSION:-$(./scripts/version)}
+
+ARCH=${ARCH:-amd64}
+SUFFIX=""
+[ "${ARCH}" != "amd64" ] && SUFFIX="_${ARCH}"
+
+export VERSION=${VERSION:-$(./scripts/version)}
+
+TAG=${TAG:-${VERSION}${SUFFIX}}
+REPO=${REPO:-jpwi}
 
 mkdir -p bin
 [ "$(uname)" != "Darwin" ] && LINKFLAGS="-extldflags -static -s -w"
 CGO_ENABLED=0 go build -ldflags "-X main.VERSION=$VERSION $LINKFLAGS" -o bin/local-lvm-provisioner
+
+for template in ./deploy-templates/*.yaml; do
+        mkdir -p bin/deploy
+        sed -e "s#@TAG@#${TAG}#g" \
+            -e "s#@REPO@#${REPO}#g" \
+            "$template" > "bin/deploy/$(basename "$template")"
+done

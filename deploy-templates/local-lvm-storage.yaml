@@ -60,7 +60,7 @@ spec:
       serviceAccountName: local-lvm-provisioner-service-account
       containers:
       - name: local-lvm-provisioner
-        image: jpwi/local-lvm-provisioner:v0.10.0
+        image: @REPO@/local-lvm-provisioner:@TAG@
         imagePullPolicy: Always
         command:
         - local-lvm-provisioner
