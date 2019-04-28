@@ -1,0 +1,20 @@
+#!/bin/bash
+set -e
+
+cd $(dirname $0)/..
+
+ARCH=${ARCH:-amd64}
+SUFFIX=""
+[ "${ARCH}" != "amd64" ] && SUFFIX="_${ARCH}"
+
+export VERSION=${VERSION:-$(./scripts/version)}
+
+TAG=${TAG:-${VERSION}${SUFFIX}}
+REPO=${REPO:-jpwi}
+IMAGE=${IMAGE:-${REPO}/local-lvm-provisioner-helper:${TAG}}
+
+docker build -t ${IMAGE} ./helper
+
+echo Built ${IMAGE}
+
+echo ${IMAGE} > ./bin/latest_helper_image
