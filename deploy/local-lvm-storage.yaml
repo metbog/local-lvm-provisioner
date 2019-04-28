@@ -100,6 +100,7 @@ data:
                 "nodeVGMap":[
                 {
                         "node":"DEFAULT_VGS_FOR_NON_LISTED_NODES",
+                        "path":"/data",
                         "vgs":["vg1"]
                 }
                 ]

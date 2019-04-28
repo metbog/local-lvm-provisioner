@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"strconv"
 	"sync"
 	"time"
 
@@ -38,7 +39,7 @@ var (
 	ConfigFileCheckInterval = 5 * time.Second
 )
 
-type LocalPathProvisioner struct {
+type LocalLVMProvisioner struct {
 	stopCh      chan struct{}
 	kubeClient  *clientset.Clientset
 	namespace   string
@@ -50,25 +51,27 @@ type LocalPathProvisioner struct {
 	configMutex *sync.RWMutex
 }
 
-type NodePathMapData struct {
-	Node  string   `json:"node,omitempty"`
-	Paths []string `json:"paths,omitempty"`
+type NodeVGMapData struct {
+	Node string `json:"node,omitempty"`
+	Path string `json:"path,omitempty"`
+	VGs[]string `json:"vgs,omitempty"`
 }
 
 type ConfigData struct {
-	NodePathMap []*NodePathMapData `json:"nodePathMap,omitempty"`
+	NodeVGMap []*NodeVGMapData `json:"NodeVGMap,omitempty"`
 }
 
-type NodePathMap struct {
-	Paths map[string]struct{}
+type NodeVGMap struct {
+	Path string
+	VGs map[string]struct{}
 }
 
 type Config struct {
-	NodePathMap map[string]*NodePathMap
+	NodeVGMap map[string]*NodeVGMap
 }
 
-func NewProvisioner(stopCh chan struct{}, kubeClient *clientset.Clientset, configFile, namespace, helperImage string) (*LocalPathProvisioner, error) {
-	p := &LocalPathProvisioner{
+func NewProvisioner(stopCh chan struct{}, kubeClient *clientset.Clientset, configFile, namespace, helperImage string) (*LocalLVMProvisioner, error) {
+	p := &LocalLVMProvisioner{
 		stopCh: stopCh,
 
 		kubeClient:  kubeClient,
@@ -88,7 +91,7 @@ func NewProvisioner(stopCh chan struct{}, kubeClient *clientset.Clientset, confi
 	return p, nil
 }
 
-func (p *LocalPathProvisioner) refreshConfig() error {
+func (p *LocalLVMProvisioner) refreshConfig() error {
 	p.configMutex.Lock()
 	defer p.configMutex.Unlock()
 
@@ -117,7 +120,7 @@ func (p *LocalPathProvisioner) refreshConfig() error {
 	return err
 }
 
-func (p *LocalPathProvisioner) watchAndRefreshConfig() {
+func (p *LocalLVMProvisioner) watchAndRefreshConfig() {
 	go func() {
 		for {
 			select {
@@ -133,35 +136,38 @@ func (p *LocalPathProvisioner) watchAndRefreshConfig() {
 	}()
 }
 
-func (p *LocalPathProvisioner) getRandomPathOnNode(node string) (string, error) {
+func (p *LocalLVMProvisioner) getPathAndVGOnNode(node string) (string, string, error) {
 	p.configMutex.RLock()
 	defer p.configMutex.RUnlock()
 
 	if p.config == nil {
-		return "", fmt.Errorf("no valid config available")
+		return "", "", fmt.Errorf("no valid config available")
 	}
 
 	c := p.config
-	npMap := c.NodePathMap[node]
+	npMap := c.NodeVGMap[node]
 	if npMap == nil {
-		npMap = c.NodePathMap[NodeDefaultNonListedNodes]
+		npMap = c.NodeVGMap[NodeDefaultNonListedNodes]
 		if npMap == nil {
-			return "", fmt.Errorf("config doesn't contain node %v, and no %v available", node, NodeDefaultNonListedNodes)
+			return "", "", fmt.Errorf("config doesn't contain node %v, and no %v available", node, NodeDefaultNonListedNodes)
 		}
 		logrus.Debugf("config doesn't contain node %v, use %v instead", node, NodeDefaultNonListedNodes)
 	}
-	paths := npMap.Paths
-	if len(paths) == 0 {
-		return "", fmt.Errorf("no local path available on node %v", node)
+	if npMap.Path == "" {
+		return "", "", fmt.Errorf("no mount path defined on node %v", node)
 	}
-	path := ""
-	for path = range paths {
+	vgs := npMap.VGs
+	if len(vgs) == 0 {
+		return "", "", fmt.Errorf("no local volume group available on node %v", node)
+	}
+	vg := ""
+	for vg = range vgs {
 		break
 	}
-	return path, nil
+	return npMap.Path, vg, nil
 }
 
-func (p *LocalPathProvisioner) Provision(opts pvController.VolumeOptions) (*v1.PersistentVolume, error) {
+func (p *LocalLVMProvisioner) Provision(opts pvController.VolumeOptions) (*v1.PersistentVolume, error) {
 	pvc := opts.PVC
 	if pvc.Spec.Selector != nil {
 		return nil, fmt.Errorf("claim.Spec.Selector is not supported")
@@ -176,20 +182,36 @@ func (p *LocalPathProvisioner) Provision(opts pvController.VolumeOptions) (*v1.P
 		return nil, fmt.Errorf("configuration error, no node was specified")
 	}
 
-	basePath, err := p.getRandomPathOnNode(node.Name)
+	size, ok := pvc.Spec.Resources.Requests[v1.ResourceStorage]
+	if !ok {
+		return nil, fmt.Errorf("Cannot handle physical volume claim without storage size request")
+	}
+
+	if size.Value() < 1024 * 1024 * 4 {
+		return nil, fmt.Errorf("Physical volume needs to be at least 4MB in size")
+	}
+
+	mountPath, vgName, err := p.getPathAndVGOnNode(node.Name)
 	if err != nil {
 		return nil, err
 	}
-	name := opts.PVName
-	path := filepath.Join(basePath, name)
-	logrus.Infof("Creating volume %v at %v:%v", name, node.Name, path)
 
-	createCmdsForPath := []string{
-		"mkdir",
-		"-m", "0777",
-		"-p",
+	pvcNameParts := []string{ pvc.Namespace, pvc.Name }
+	pvcName := strings.Join(pvcNameParts, "-")
+
+	name := opts.PVName
+	path := filepath.Join(mountPath, pvcName)
+	logrus.Infof("Creating volume %v (%v/%v) at %v:%v", name, pvc.Namespace, pvc.Name, node.Name, path)
+
+	createVGOperationArgs := []string{
+		"create",
+		mountPath,
+		vgName,
+		pvcName,
+		name,
+		strconv.FormatInt(size.Value(), 10),
 	}
-	if err := p.createHelperPod(ActionTypeCreate, createCmdsForPath, name, path, node.Name); err != nil {
+	if err := p.createHelperPod(ActionTypeCreate, createVGOperationArgs, node.Name); err != nil {
 		return nil, err
 	}
 
@@ -233,7 +255,7 @@ func (p *LocalPathProvisioner) Provision(opts pvController.VolumeOptions) (*v1.P
 	}, nil
 }
 
-func (p *LocalPathProvisioner) Delete(pv *v1.PersistentVolume) (err error) {
+func (p *LocalLVMProvisioner) Delete(pv *v1.PersistentVolume) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to delete volume %v", pv.Name)
 	}()
@@ -243,8 +265,8 @@ func (p *LocalPathProvisioner) Delete(pv *v1.PersistentVolume) (err error) {
 	}
 	if pv.Spec.PersistentVolumeReclaimPolicy != v1.PersistentVolumeReclaimRetain {
 		logrus.Infof("Deleting volume %v at %v:%v", pv.Name, node, path)
-		cleanupCmdsForPath := []string{"rm", "-rf"}
-		if err := p.createHelperPod(ActionTypeDelete, cleanupCmdsForPath, pv.Name, path, node); err != nil {
+		cleanupVGOperationArgs := []string{"delete", path, pv.Name}
+		if err := p.createHelperPod(ActionTypeDelete, cleanupVGOperationArgs, node); err != nil {
 			logrus.Infof("clean up volume %v failed: %v", pv.Name, err)
 			return err
 		}
@@ -254,7 +276,7 @@ func (p *LocalPathProvisioner) Delete(pv *v1.PersistentVolume) (err error) {
 	return nil
 }
 
-func (p *LocalPathProvisioner) getPathAndNodeForPV(pv *v1.PersistentVolume) (path, node string, err error) {
+func (p *LocalLVMProvisioner) getPathAndNodeForPV(pv *v1.PersistentVolume) (path, node string, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to delete volume %v", pv.Name)
 	}()
@@ -263,8 +285,10 @@ func (p *LocalPathProvisioner) getPathAndNodeForPV(pv *v1.PersistentVolume) (pat
 	if hostPath == nil {
 		return "", "", fmt.Errorf("no HostPath set")
 	}
-	path = hostPath.Path
-
+	path = filepath.Dir(hostPath.Path)
+	if path == "." || path == "/" {
+		return "", "", fmt.Errorf("invalid HostPath set")
+	}
 	nodeAffinity := pv.Spec.NodeAffinity
 	if nodeAffinity == nil {
 		return "", "", fmt.Errorf("no NodeAffinity set")
@@ -295,34 +319,42 @@ func (p *LocalPathProvisioner) getPathAndNodeForPV(pv *v1.PersistentVolume) (pat
 	return path, node, nil
 }
 
-func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []string, name, path, node string) (err error) {
+func (p *LocalLVMProvisioner) createHelperPod(action ActionType, vgOperationArgs []string, node string) (err error) {
+	var name string
+
+	if action == ActionTypeCreate {
+		name = vgOperationArgs[4]
+	} else {
+		name = vgOperationArgs[2]
+	}
+
 	defer func() {
 		err = errors.Wrapf(err, "failed to %v volume %v", action, name)
 	}()
-	if name == "" || path == "" || node == "" {
-		return fmt.Errorf("invalid empty name or path or node")
+
+	if name == "" || node == "" {
+		return fmt.Errorf("invalid empty name or node")
 	}
-	path, err = filepath.Abs(path)
+	path, err := filepath.Abs(vgOperationArgs[1])
 	if err != nil {
 		return err
 	}
 	path = strings.TrimSuffix(path, "/")
-	parentDir, volumeDir := filepath.Split(path)
-	parentDir = strings.TrimSuffix(parentDir, "/")
-	volumeDir = strings.TrimSuffix(volumeDir, "/")
-	if parentDir == "" || volumeDir == "" {
+	if path == "" {
 		// it covers the `/` case
-		return fmt.Errorf("invalid path %v for %v: cannot find parent dir or volume dir", action, path)
+		return fmt.Errorf("invalid path for %v", action)
 	}
 
 	hostPathType := v1.HostPathDirectoryOrCreate
+	privilegedTrue := true
 	helperPod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: string(action) + "-" + name,
 		},
 		Spec: v1.PodSpec{
 			RestartPolicy: v1.RestartPolicyNever,
-			NodeName:      node,
+			NodeName: node,
+			HostPID: true,
 			Tolerations: []v1.Toleration{
 				{
 					Operator: v1.TolerationOpExists,
@@ -330,15 +362,18 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []
 			},
 			Containers: []v1.Container{
 				{
-					Name:    "local-lvm-" + string(action),
-					Image:   p.helperImage,
-					Command: append(cmdsForPath, filepath.Join("/data/", volumeDir)),
+					Name:  "local-lvm-" + string(action),
+					Image: p.helperImage,
+					Args:  vgOperationArgs,
 					VolumeMounts: []v1.VolumeMount{
 						{
 							Name:      "data",
 							ReadOnly:  false,
-							MountPath: "/data/",
+							MountPath: vgOperationArgs[1],
 						},
+					},
+					SecurityContext: &v1.SecurityContext{
+						Privileged: &privilegedTrue,
 					},
 				},
 			},
@@ -347,7 +382,7 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmdsForPath []
 					Name: "data",
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
-							Path: parentDir,
+							Path: vgOperationArgs[1],
 							Type: &hostPathType,
 						},
 					},
@@ -408,28 +443,31 @@ func canonicalizeConfig(data *ConfigData) (cfg *Config, err error) {
 		err = errors.Wrapf(err, "config canonicalization failed")
 	}()
 	cfg = &Config{}
-	cfg.NodePathMap = map[string]*NodePathMap{}
-	for _, n := range data.NodePathMap {
-		if cfg.NodePathMap[n.Node] != nil {
+	cfg.NodeVGMap = map[string]*NodeVGMap{}
+	for _, n := range data.NodeVGMap {
+		if cfg.NodeVGMap[n.Node] != nil {
 			return nil, fmt.Errorf("duplicate node %v", n.Node)
 		}
-		npMap := &NodePathMap{Paths: map[string]struct{}{}}
-		cfg.NodePathMap[n.Node] = npMap
-		for _, p := range n.Paths {
-			if p[0] != '/' {
-				return nil, fmt.Errorf("path must start with / for path %v on node %v", p, n.Node)
+		npMap := &NodeVGMap{VGs: map[string]struct{}{}}
+		cfg.NodeVGMap[n.Node] = npMap
+
+		if n.Path[0] != '/' {
+			return nil, fmt.Errorf("mount path must start with / for path %v on node %v", n.Path, n.Node)
+		}
+		path, err := filepath.Abs(n.Path)
+		if err != nil {
+			return nil, err
+		}
+		if path == "/" {
+			return nil, fmt.Errorf("cannot use root ('/') as mount path on node %v", n.Node)
+		}
+		npMap.Path = path
+
+		for _, vg := range n.VGs {
+			if _, ok := npMap.VGs[vg]; ok {
+				return nil, fmt.Errorf("duplicate volume group %v on node %v", vg, n.Node)
 			}
-			path, err := filepath.Abs(p)
-			if err != nil {
-				return nil, err
-			}
-			if path == "/" {
-				return nil, fmt.Errorf("cannot use root ('/') as path on node %v", n.Node)
-			}
-			if _, ok := npMap.Paths[path]; ok {
-				return nil, fmt.Errorf("duplicate path %v on node %v", p, n.Node)
-			}
-			npMap.Paths[path] = struct{}{}
+			npMap.VGs[vg] = struct{}{}
 		}
 	}
 	return cfg, nil

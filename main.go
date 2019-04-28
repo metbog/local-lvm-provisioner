@@ -27,7 +27,7 @@ var (
 	DefaultNamespace       = "local-lvm-storage"
 	FlagHelperImage        = "helper-image"
 	EnvHelperImage         = "HELPER_IMAGE"
-	DefaultHelperImage     = "busybox"
+	DefaultHelperImage     = "local-lvm-storage-helper:0.0.1"
 )
 
 func cmdNotFound(c *cli.Context, command string) {
