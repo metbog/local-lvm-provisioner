@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	VERSION = "0.0.1"
+	VERSION = "HEAD"
 
 	FlagConfigFile         = "config"
 	FlagProvisionerName    = "provisioner-name"
@@ -27,7 +27,7 @@ var (
 	DefaultNamespace       = "local-lvm-storage"
 	FlagHelperImage        = "helper-image"
 	EnvHelperImage         = "HELPER_IMAGE"
-	DefaultHelperImage     = "local-lvm-storage-helper:0.0.1"
+	DefaultHelperImage     = "local-lvm-storage-helper:" + VERSION
 )
 
 func cmdNotFound(c *cli.Context, command string) {
