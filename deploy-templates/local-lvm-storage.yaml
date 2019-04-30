@@ -62,12 +62,14 @@ spec:
       - name: local-lvm-provisioner
         image: @REPO@/local-lvm-provisioner:@TAG@
         imagePullPolicy: Always
-        command:
-        - local-lvm-provisioner
+        args:
+        - run
         - --debug
         - start
         - --config
         - /etc/config/config.json
+        - --helper-image
+        - @REPO@/local-lvm-provisioner:@TAG@
         volumeMounts:
         - name: config-volume
           mountPath: /etc/config/

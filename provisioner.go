@@ -205,10 +205,10 @@ func (p *LocalLVMProvisioner) Provision(opts pvController.VolumeOptions) (*v1.Pe
 
 	createVGOperationArgs := []string{
 		"create",
+		name,
 		mountPath,
 		vgName,
 		pvcName,
-		name,
 		strconv.FormatInt(size.Value(), 10),
 	}
 	if err := p.createHelperPod(ActionTypeCreate, createVGOperationArgs, node.Name); err != nil {
@@ -265,7 +265,7 @@ func (p *LocalLVMProvisioner) Delete(pv *v1.PersistentVolume) (err error) {
 	}
 	if pv.Spec.PersistentVolumeReclaimPolicy != v1.PersistentVolumeReclaimRetain {
 		logrus.Infof("Deleting volume %v at %v:%v", pv.Name, node, path)
-		cleanupVGOperationArgs := []string{"delete", path, pv.Name}
+		cleanupVGOperationArgs := []string{"delete", pv.Name}
 		if err := p.createHelperPod(ActionTypeDelete, cleanupVGOperationArgs, node); err != nil {
 			logrus.Infof("clean up volume %v failed: %v", pv.Name, err)
 			return err
@@ -320,13 +320,7 @@ func (p *LocalLVMProvisioner) getPathAndNodeForPV(pv *v1.PersistentVolume) (path
 }
 
 func (p *LocalLVMProvisioner) createHelperPod(action ActionType, vgOperationArgs []string, node string) (err error) {
-	var name string
-
-	if action == ActionTypeCreate {
-		name = vgOperationArgs[4]
-	} else {
-		name = vgOperationArgs[2]
-	}
+	name := vgOperationArgs[1]
 
 	defer func() {
 		err = errors.Wrapf(err, "failed to %v volume %v", action, name)

@@ -22,3 +22,5 @@ for template in ./deploy-templates/*.yaml; do
             -e "s#@REPO@#${REPO}#g" \
             "$template" > "bin/deploy/$(basename "$template")"
 done
+
+cp package/files/run.sh bin/run.sh

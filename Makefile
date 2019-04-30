@@ -19,10 +19,7 @@ trash-keep: .dapper
 deps: trash
 
 package: build
-helper: build
 
-all: package helper
-
-.DEFAULT_GOAL := all
+.DEFAULT_GOAL := package
 
 .PHONY: $(TARGETS)
