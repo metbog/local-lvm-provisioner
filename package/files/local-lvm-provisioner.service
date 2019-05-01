@@ -1,0 +1,10 @@
+[Unit]
+Description=Mount local LVM provisioner volumes
+RequiresMountsFor=/
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/local-lvm-provisioner start
+
+[Install]
+WantedBy=multi-user.target

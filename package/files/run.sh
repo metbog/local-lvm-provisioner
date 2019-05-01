@@ -18,12 +18,40 @@ case "$1" in
 		pvsize="$6"
 
 		[ -n "$hostpath" -a -n "$vgname" -a -n "$pvname" -a -n "$pvid" -a -n "$pvsize" ] || usage
+
+		set -- $(md5sum /rootfs/usr/local/bin/local-lvm-provisioner 2>/dev/null)
+		chk_installed="$1"
+
+		set -- $(md5sum /usr/share/local-lvm-provisioner.sh 2>/dev/null)
+		chk_expected="$1"
+
+		if [ "$chk_installed" != "$chk_expected" ]; then
+			echo "Installing mount helper" >&2
+			mkdir -p /rootfs/usr/local/bin
+			cp /usr/share/local-lvm-provisioner.sh /rootfs/usr/local/bin/local-lvm-provisioner
+			chmod 0755 /rootfs/usr/local/bin/local-lvm-provisioner
+		fi
+
+		set -- $(md5sum /rootfs/etc/systemd/system/local-lvm-provisioner.service 2>/dev/null)
+		chk_installed="$1"
+
+		set -- $(md5sum /usr/share/local-lvm-provisioner.service 2>/dev/null)
+		chk_expected="$1"
+
+		if [ "$chk_installed" != "$chk_expected" ]; then
+			echo "Installing systemd unit" >&2
+			mkdir -p /etc/systemd/system
+			cp /usr/share/local-lvm-provisioner.service /rootfs/etc/systemd/system/local-lvm-provisioner.service
+			nsenter -t 1 -m -- systemctl enable local-lvm-provisioner.service
+		fi
+
 		lvcreate -y -L "${pvsize}B" -n "$pvid" --addtag local-lvm-provisioner --addtag "mount=$hostpath" --addtag "pvname=$pvname" "$vgname"
 		mkfs.ext4 -m 0 -L "$pvname" -U "${pvid#pvc-}" "/dev/$vgname/$pvid"
 		nsenter -t 1 -m -- mkdir -p "$hostpath/$pvname"
+		nsenter -t 1 -m -- pvscan --cache
+		nsenter -t 1 -m -- vgscan --cache --mknodes
 		nsenter -t 1 -m -- mount "/dev/$vgname/$pvid" "$hostpath/$pvname"
 		nsenter -t 1 -m -- chmod 0777 "$hostpath/$pvname"
-		nsenter -t 1 -m -- pvscan --cache
 	;;
 	delete)
 		pvid="$2"

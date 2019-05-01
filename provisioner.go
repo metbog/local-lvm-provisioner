@@ -361,9 +361,9 @@ func (p *LocalLVMProvisioner) createHelperPod(action ActionType, vgOperationArgs
 					Args:  vgOperationArgs,
 					VolumeMounts: []v1.VolumeMount{
 						{
-							Name:      "data",
+							Name:      "rootfs",
 							ReadOnly:  false,
-							MountPath: vgOperationArgs[1],
+							MountPath: "/rootfs",
 						},
 					},
 					SecurityContext: &v1.SecurityContext{
@@ -373,10 +373,10 @@ func (p *LocalLVMProvisioner) createHelperPod(action ActionType, vgOperationArgs
 			},
 			Volumes: []v1.Volume{
 				{
-					Name: "data",
+					Name: "rootfs",
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
-							Path: vgOperationArgs[1],
+							Path: "/",
 							Type: &hostPathType,
 						},
 					},
