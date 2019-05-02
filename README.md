@@ -188,6 +188,16 @@ To uninstall, execute:
 kubectl delete -f https://gist.githubusercontent.com/jow-/34991ba57e8993d6abf89483afc0bb5d/raw/14e92b01431610e7e462dd451ba0d17ec9fbb9b5/local-lvm-storage.yaml
 ```
 
+Note that since v0.10.2, the provisioner will install a systemd unit file and helper script to remount any required LVM volumes on boot.
+To remove these, issue the following commands:
+
+```
+rm /usr/local/bin/local-lvm-provisioner
+systemctl disable local-lvm-provisioner
+rm /etc/systemd/system/local-lvm-provisioner.service
+systemctl daemon-reload
+```
+
 ## License
 
 Copyright (c) 2019  [Jo-Philipp Wich](http://mein.io/)<br>
