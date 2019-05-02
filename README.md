@@ -1,19 +1,25 @@
-# Local Path Provisioner
+# Local LVM Provisioner
 
 ## Overview
 
-Local Path Provisioner provides a way for the Kubernetes users to utilize the local storage in each node. Based on the user configuration, the Local Path Provisioner will create `hostPath` based persistent volume on the node automatically. It utilizes the features introduced by Kubernetes [Local Persistent Volume feature](https://kubernetes.io/blog/2018/04/13/local-persistent-volumes-beta/), but make it a simpler solution than the built-in `local` volume feature in Kubernetes.
+The Local LVM Provisioner has been forked from [Ranger Labs' Local Path Provisioner](https://github.com/rancher/local-path-provisioner) project and aims to provide a simple way to expose local disk storage as LVM volumes on each node. The main motivations for exposing local storage as logical volumes instead of simple `hostPath` mounts was to enforce size limits
+and to gain the ability to do atomic snapshots of the data for backup purposes.
+
+Depending on the user provided configuration, the Local LVM Provisioner will create a Logical Volume in one of the supplied Volume Groups on demand, format it using the ext4 filesystem, mount it on the host system and expose the host system mount point to the container using a `hostPath` based persistent volume.
+
+As Rangers's Local Path Provisioner, the LVM provisioning relies on the features introduced by Kubernetes [Local Persistent Volume feature](https://kubernetes.io/blog/2018/04/13/local-persistent-volumes-beta/), but aims to be a simpler solution than the built-in `local` volume feature in Kubernetes.
 
 ## Compare to built-in Local Persistent Volume feature in Kubernetes
 
 ### Pros
-Dynamic provisioning the volume using host path.
-* Currently the Kubernetes [Local Volume provisioner](https://github.com/kubernetes-incubator/external-storage/tree/master/local-volume) cannot do dynamic provisioning for the host path volumes.
+
+1. Dynamic creation and provisioning of LVM volumes from free host volume group space
+    1. Currently the Kubernetes [Local Volume provisioner](https://github.com/kubernetes-incubator/external-storage/tree/master/local-volume) cannot do dynamic provisioning for the host path volumes
+2. Ability to perform LVM operations on the provisioned space, e.g. snapshotting to backup data
 
 ### Cons
-1. No support for the volume capacity limit currently.
-    1. The capacity limit will be ignored for now.
-2. Only support `hostPath`
+
+1. Only supports `hostPath` based mounts
 
 ## Requirement
 Kubernetes v1.12+.
@@ -22,22 +28,22 @@ Kubernetes v1.12+.
 
 ### Installation
 
-In this setup, the directory `/opt/local-lvm-provisioner` will be used across all the nodes as the path for provisioning (a.k.a, store the persistent volume data). The provisioner will be installed in `local-lvm-storage` namespace by default.
+In this setup, the directory `/data` will be used across all the nodes as the path for creating the volume mount points and a LVM volume group named `vg1` will be used to allocate logical volumes in. The provisioner will be installed in the `local-lvm-storage` namespace by default.
 
 ```
-kubectl apply -f https://raw.githubusercontent.com/rancher/local-lvm-provisioner/master/deploy/local-lvm-storage.yaml
+kubectl apply -f https://gist.githubusercontent.com/jow-/34991ba57e8993d6abf89483afc0bb5d/raw/14e92b01431610e7e462dd451ba0d17ec9fbb9b5/local-lvm-storage.yaml
 ```
 
 After installation, you should see something like the following:
 ```
 $ kubectl -n local-lvm-storage get pod
-NAME                                     READY     STATUS    RESTARTS   AGE
-local-lvm-provisioner-d744ccf98-xfcbk   1/1       Running   0          7m
+NAME                                     READY   STATUS    RESTARTS   AGE
+local-lvm-provisioner-75dfd97848-db2rq   1/1     Running   0          34m
 ```
 
 Check and follow the provisioner log using:
 ```
-$ kubectl -n local-lvm-storage logs -f local-lvm-provisioner-d744ccf98-xfcbk
+$ kubectl -n local-lvm-storage logs -f local-lvm-provisioner-75dfd97848-db2rq
 ```
 
 ## Usage
@@ -45,29 +51,29 @@ $ kubectl -n local-lvm-storage logs -f local-lvm-provisioner-d744ccf98-xfcbk
 Create a `hostPath` backed Persistent Volume and a pod uses it:
 
 ```
-kubectl create -f https://raw.githubusercontent.com/rancher/local-lvm-provisioner/master/examples/pvc.yaml
-kubectl create -f https://raw.githubusercontent.com/rancher/local-lvm-provisioner/master/examples/pod.yaml
+kubectl create -f https://raw.githubusercontent.com/jow-/local-lvm-provisioner/master/examples/pvc.yaml
+kubectl create -f https://raw.githubusercontent.com/jow-/local-lvm-provisioner/master/examples/pod.yaml
 ```
 
 You should see the PV has been created:
 ```
 $ kubectl get pv
-NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS    CLAIM                    STORAGECLASS   REASON    AGE
-pvc-bc3117d9-c6d3-11e8-b36d-7a42907dda78   2Gi        RWO            Delete           Bound     default/local-lvm-pvc   local-lvm               4s
+NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM                    STORAGECLASS   REASON   AGE
+pvc-5671a2cd-6b25-11e9-acd6-901b0ec4277a   2Gi        RWO            Delete           Bound    default/local-lvm-pvc    local-lvm               4s
 ```
 
 The PVC has been bound:
 ```
 $ kubectl get pvc
-NAME             STATUS    VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
-local-lvm-pvc   Bound     pvc-bc3117d9-c6d3-11e8-b36d-7a42907dda78   2Gi        RWO            local-lvm     16s
+NAME            STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+local-lvm-pvc   Bound    pvc-5671a2cd-6b25-11e9-acd6-901b0ec4277a   2Gi        RWO            local-lvm      5s
 ```
 
 And the Pod started running:
 ```
 $ kubectl get pod
 NAME          READY     STATUS    RESTARTS   AGE
-volume-test   1/1       Running   0          3s
+volume-test   1/1       Running   0          6s
 ```
 
 Write something into the pod
@@ -77,12 +83,12 @@ kubectl exec volume-test -- sh -c "echo local-lvm-test > /data/test"
 
 Now delete the pod using
 ```
-kubectl delete -f https://raw.githubusercontent.com/rancher/local-lvm-provisioner/master/examples/pod.yaml
+kubectl delete -f https://raw.githubusercontent.com/jow-/local-lvm-provisioner/master/examples/pod.yaml
 ```
 
 After confirm that the pod is gone, recreated the pod using
 ```
-kubectl create -f https://raw.githubusercontent.com/rancher/local-lvm-provisioner/master/examples/pod.yaml
+kubectl create -f https://raw.githubusercontent.com/jow-/local-lvm-provisioner/master/examples/pod.yaml
 ```
 
 Check the volume content:
@@ -93,8 +99,8 @@ local-lvm-test
 
 Delete the pod and pvc
 ```
-kubectl delete -f https://raw.githubusercontent.com/rancher/local-lvm-provisioner/master/examples/pod.yaml
-kubectl delete -f https://raw.githubusercontent.com/rancher/local-lvm-provisioner/master/examples/pvc.yaml
+kubectl delete -f https://raw.githubusercontent.com/jow-/local-lvm-provisioner/master/examples/pod.yaml
+kubectl delete -f https://raw.githubusercontent.com/jow-/local-lvm-provisioner/master/examples/pvc.yaml
 ```
 
 The volume content stored on the node will be automatically cleaned up. You can check the log of `local-lvm-provisioner-xxx` for details.
@@ -113,17 +119,20 @@ metadata:
 data:
   config.json: |-
         {
-                "nodePathMap":[
+                "nodeVGMap":[
                 {
                         "node":"DEFAULT_VGS_FOR_NON_LISTED_NODES",
+                        "path":"/data",
                         "vgs":["vg1"]
                 },
                 {
                         "node":"yasker-lp-dev1",
+                        "path":"/volumes",
                         "vgs":["vg0", "vg1"]
                 },
                 {
                         "node":"yasker-lp-dev3",
+                        "path":"/volumes",
                         "vgs":[]
                 }
                 ]
@@ -132,48 +141,56 @@ data:
 ```
 
 ### Definition
-`nodePathMap` is the place user can customize where to store the data on each node.
-1. If one node is not listed on the `nodePathMap`, and Kubernetes wants to create volume on it, the paths specified in `DEFAULT_VGS_FOR_NON_LISTED_NODES` will be used for provisioning.
-2. If one node is listed on the `nodePathMap`, the specified paths in `paths` will be used for provisioning.
-    1. If one node is listed but with `paths` set to `[]`, the provisioner will refuse to provision on this node.
-    2. If more than one path was specified, the path would be chosen randomly when provisioning.
+
+The `nodeVGMap` array is the place user can customize where to store the data on each node.
+
+1. If one node is not listed on the `nodeVGMap`, and Kubernetes wants to create volume on it, the paths specified in `DEFAULT_VGS_FOR_NON_LISTED_NODES` will be used for provisioning.
+2. If one node is listed on the `nodeVGMap`, the specified volume groups in `vgs` will be used for provisioning and mount point directories named after the namespace and name of the claim will be created below the directory specified by `path`.
+    1. If one node is listed but with `vgs` set to `[]`, the provisioner will refuse to provision on this node.
+    2. If more than one volume group was specified, the path would be chosen randomly when provisioning.
 
 ### Rules
+
 The configuration must obey following rules:
-1. `config.json` must be a valid json file.
+
+1. The `config.json` key of the config map must valid JSON.
 2. A path must start with `/`, a.k.a an absolute path.
 2. Root directory(`/`) is prohibited.
-3. No duplicate paths allowed for one node.
-4. No duplicate node allowed.
+3. No duplicate volume groups are allowed for one node.
+4. No duplicate nodes are allowed.
 
 ### Reloading
 
 The provisioner supports automatic reloading of configuration. Users can change the configuration using `kubectl apply` or `kubectl edit` with config map `local-lvm-config`. It will be a delay between user update the config map and the provisioner pick it up.
 
 When the provisioner detected the configuration changes, it will try to load the new configuration. Users can observe it in the log
->time="2018-10-03T05:56:13Z" level=debug msg="Applied config: {\"nodePathMap\":[{\"node\":\"DEFAULT_VGS_FOR_NON_LISTED_NODES\",\"paths\":[\"/opt/local-lvm-provisioner\"]},{\"node\":\"yasker-lp-dev1\",\"paths\":[\"/opt\",\"/data1\"]},{\"node\":\"yasker-lp-dev3\"}]}"
+
+```
+time="2018-10-03T05:56:13Z" level=debug msg="Applied config: {\"nodeVGMap\":[{\"node\":\"DEFAULT_VGS_FOR_NON_LISTED_NODES\",\"path\":\"/data\",\"vgs\":[\"vg1\"]},...]}"
+```
 
 If the reload failed due to some reason, the provisioner will report error in the log, and **continue using the last valid configuration for provisioning in the meantime**.
->time="2018-10-03T05:19:25Z" level=error msg="failed to load the new config file: fail to load config file /etc/config/config.json: invalid character '#' looking for beginning of object key string"
 
->time="2018-10-03T05:20:10Z" level=error msg="failed to load the new config file: config canonicalization failed: path must start with / for path opt on node yasker-lp-dev1"
-
->time="2018-10-03T05:23:35Z" level=error msg="failed to load the new config file: config canonicalization failed: duplicate path /data1 on node yasker-lp-dev1
-
->time="2018-10-03T06:39:28Z" level=error msg="failed to load the new config file: config canonicalization failed: duplicate node yasker-lp-dev3"
+```
+time="2018-10-03T05:19:25Z" level=error msg="failed to load the new config file: fail to load config file /etc/config/config.json: invalid character '#' looking for beginning of object key string"
+time="2018-10-03T05:20:10Z" level=error msg="failed to load the new config file: config canonicalization failed: path must start with / for path opt on node yasker-lp-dev1"
+time="2018-10-03T05:23:35Z" level=error msg="failed to load the new config file: config canonicalization failed: duplicate path /data1 on node yasker-lp-dev1
+time="2018-10-03T06:39:28Z" level=error msg="failed to load the new config file: config canonicalization failed: duplicate node yasker-lp-dev3"
+```
 
 ## Uninstall
 
-Before uninstallation, make sure the PVs created by the provisioner has already been deleted. Use `kubectl get pv` and make sure no PV with StorageClass `local-lvm`.
+Before uninstallation, make sure that the PVs created by the provisioner have already been deleted. Use `kubectl get pv` and make sure no PV with StorageClass `local-lvm` exists anymore.
 
 To uninstall, execute:
 
 ```
-kubectl delete -f https://raw.githubusercontent.com/rancher/local-lvm-provisioner/master/deploy/local-lvm-storage.yaml
+kubectl delete -f https://gist.githubusercontent.com/jow-/34991ba57e8993d6abf89483afc0bb5d/raw/14e92b01431610e7e462dd451ba0d17ec9fbb9b5/local-lvm-storage.yaml
 ```
 
 ## License
 
+Copyright (c) 2019  [Jo-Philipp Wich](http://mein.io/)<br>
 Copyright (c) 2014-2018  [Rancher Labs, Inc.](http://rancher.com/)
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
