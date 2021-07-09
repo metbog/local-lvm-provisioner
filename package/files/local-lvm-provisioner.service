@@ -1,9 +1,11 @@
 [Unit]
 Description=Mount local LVM provisioner volumes
 RequiresMountsFor=/
+After=lvm2-lvmetad.service
 
 [Service]
 Type=oneshot
+ExecStartPre=/usr/sbin/lvm pvscan
 ExecStart=/usr/local/bin/local-lvm-provisioner start
 
 [Install]

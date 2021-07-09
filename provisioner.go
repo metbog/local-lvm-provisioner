@@ -6,16 +6,18 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 
+	uuid "github.com/satori/go.uuid"
+
 	pvController "github.com/kubernetes-incubator/external-storage/lib/controller"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 )
@@ -52,9 +54,9 @@ type LocalLVMProvisioner struct {
 }
 
 type NodeVGMapData struct {
-	Node string `json:"node,omitempty"`
-	Path string `json:"path,omitempty"`
-	VGs[]string `json:"vgs,omitempty"`
+	Node string   `json:"node,omitempty"`
+	Path string   `json:"path,omitempty"`
+	VGs  []string `json:"vgs,omitempty"`
 }
 
 type ConfigData struct {
@@ -63,7 +65,7 @@ type ConfigData struct {
 
 type NodeVGMap struct {
 	Path string
-	VGs map[string]struct{}
+	VGs  map[string]struct{}
 }
 
 type Config struct {
@@ -187,7 +189,7 @@ func (p *LocalLVMProvisioner) Provision(opts pvController.VolumeOptions) (*v1.Pe
 		return nil, fmt.Errorf("Cannot handle physical volume claim without storage size request")
 	}
 
-	if size.Value() < 1024 * 1024 * 4 {
+	if size.Value() < 1024*1024*4 {
 		return nil, fmt.Errorf("Physical volume needs to be at least 4MB in size")
 	}
 
@@ -196,7 +198,7 @@ func (p *LocalLVMProvisioner) Provision(opts pvController.VolumeOptions) (*v1.Pe
 		return nil, err
 	}
 
-	pvcNameParts := []string{ pvc.Namespace, pvc.Name }
+	pvcNameParts := []string{pvc.Namespace, pvc.Name}
 	pvcName := strings.Join(pvcNameParts, "-")
 
 	name := opts.PVName
@@ -341,14 +343,15 @@ func (p *LocalLVMProvisioner) createHelperPod(action ActionType, vgOperationArgs
 
 	hostPathType := v1.HostPathDirectoryOrCreate
 	privilegedTrue := true
+	uid, err := uuid.NewV4()
 	helperPod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: string(action) + "-" + name,
+			Name: string(action) + "-" + name + "-" + uid.String()[:8],
 		},
 		Spec: v1.PodSpec{
 			RestartPolicy: v1.RestartPolicyNever,
-			NodeName: node,
-			HostPID: true,
+			NodeName:      node,
+			HostPID:       true,
 			Tolerations: []v1.Toleration{
 				{
 					Operator: v1.TolerationOpExists,
